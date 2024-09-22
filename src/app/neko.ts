@@ -1,5 +1,5 @@
-const NEKO_ID = "oneko";
-const NEKO_IMAGE_URL = "/oneko.gif";
+const NEKO_ID = "neko";
+const NEKO_IMAGE_URL = "/neko.png";
 const NEKO_WIDTH = 32;
 const NEKO_HEIGHT = 32;
 const NEKO_HALF_WIDTH = NEKO_WIDTH / 2;
@@ -11,6 +11,8 @@ const ALERT_TIME = 3;
 const IDLE_THRESHOLD = 3;
 const IDLE_ANIMATION_CHANCE = 1 / 20;
 const MIN_DISTANCE = 10;
+const SPRITE_GAP = 1;
+const BACKGROUND_TARGET_COLOR = [0, 174, 240] as [number, number, number];
 
 export class Neko {
   posX: number;
@@ -50,67 +52,66 @@ export class Neko {
     this.isReducedMotion = window.matchMedia(
       `(prefers-reduced-motion: reduce)`
     ).matches;
-
     this.spriteSets = {
-      idle: [[-3, -3]],
-      alert: [[-7, -3]],
+      idle: [[0, 0]],
+      alert: [[7, 0]],
+      lickPaw: [[1, 0]],
       scratchSelf: [
-        [-5, 0],
-        [-6, 0],
-        [-7, 0],
-      ],
-      scratchWallN: [
-        [0, 0],
-        [0, -1],
+        [2, 0],
+        [3, 0],
       ],
       scratchWallS: [
-        [-7, -1],
-        [-6, -2],
+        [0, 3],
+        [1, 3],
       ],
       scratchWallE: [
-        [-2, -2],
-        [-2, -3],
+        [2, 3],
+        [3, 3],
+      ],
+      scratchWallN: [
+        [4, 3],
+        [5, 3],
       ],
       scratchWallW: [
-        [-4, 0],
-        [-4, -1],
+        [6, 3],
+        [7, 3],
       ],
-      tired: [[-3, -2]],
+      tired: [[4, 0]],
       sleeping: [
-        [-2, 0],
-        [-2, -1],
-      ],
-      N: [
-        [-1, -2],
-        [-1, -3],
-      ],
-      NE: [
-        [0, -2],
-        [0, -3],
-      ],
-      E: [
-        [-3, 0],
-        [-3, -1],
-      ],
-      SE: [
-        [-5, -1],
-        [-5, -2],
+        [5, 0],
+        [6, 0],
       ],
       S: [
-        [-6, -3],
-        [-7, -2],
+        [0, 1],
+        [1, 1],
       ],
-      SW: [
-        [-5, -3],
-        [-6, -1],
+      SE: [
+        [2, 1],
+        [3, 1],
       ],
-      W: [
-        [-4, -2],
-        [-4, -3],
+      E: [
+        [4, 1],
+        [5, 1],
+      ],
+      NE: [
+        [6, 1],
+        [7, 1],
+      ],
+      N: [
+        [0, 2],
+        [1, 2],
       ],
       NW: [
-        [-1, 0],
-        [-1, -1],
+        [2, 2],
+        [3, 2],
+      ],
+      W: [
+        [4, 2],
+        [5, 2],
+      ],
+      SW: [
+        [6, 2],
+        [7, 2],
       ],
     };
   }
@@ -124,7 +125,55 @@ export class Neko {
     this.animationLoop();
   }
 
-  createNekoElement() {
+  // TODO: image processing is done in runtime, consider doing this before when i get enough spritesets
+  static async makeTransparent(
+    imageUrl: string,
+    targetColor: [number, number, number]
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = imageUrl;
+      img.crossOrigin = "Anonymous";
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) return reject("Canvas not supported");
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
+          if (
+            r === targetColor[0] &&
+            g === targetColor[1] &&
+            b === targetColor[2]
+          ) {
+            data[i + 3] = 0;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+
+        const transparentImageUrl = canvas.toDataURL("image/png");
+        resolve(transparentImageUrl);
+      };
+
+      img.onerror = (err) => reject(err);
+    });
+  }
+
+  async createNekoElement() {
     this.nekoElement = document.createElement("div");
 
     this.nekoElement.id = NEKO_ID;
@@ -139,17 +188,35 @@ export class Neko {
     this.nekoElement.style.zIndex = Z_INDEX.toString();
     this.nekoElement.style.backgroundImage = `url("${NEKO_IMAGE_URL}")`;
 
+    document.body.appendChild(this.nekoElement);
+
+    try {
+      const transparentImageUrl = await Neko.makeTransparent(
+        NEKO_IMAGE_URL,
+        BACKGROUND_TARGET_COLOR
+      );
+
+      if (this.nekoElement) {
+        this.nekoElement.style.backgroundImage = `url("${transparentImageUrl}")`;
+      }
+    } catch (err) {
+      console.error("Failed to process the image:", err);
+    }
+
     const idleSprite = this.spriteSets["idle"]
       ? this.spriteSets["idle"][0]
       : null;
-    if (idleSprite) {
-      this.nekoElement.style.backgroundPosition = `${
-        idleSprite[0] * NEKO_WIDTH
-      }px ${idleSprite[1] * NEKO_HEIGHT}px`;
+    if (idleSprite && this.nekoElement) {
+      const posX = idleSprite[0] * (NEKO_WIDTH + SPRITE_GAP);
+      const posY = idleSprite[1] * (NEKO_HEIGHT + SPRITE_GAP);
+      this.nekoElement.style.backgroundPosition = `-${posX}px -${posY}px`;
     }
-
-    document.body.appendChild(this.nekoElement);
   }
+
+  private handleMouseMove = (event: MouseEvent) => {
+    this.mouseX = event.clientX;
+    this.mouseY = event.clientY;
+  };
 
   addEventListeners() {
     if (!this.nekoElement) return;
@@ -163,10 +230,7 @@ export class Neko {
       }
     });
 
-    document.addEventListener("mousemove", (event) => {
-      this.mouseX = event.clientX;
-      this.mouseY = event.clientY;
-    });
+    document.addEventListener("mousemove", this.handleMouseMove);
   }
 
   animationLoop() {
@@ -208,9 +272,10 @@ export class Neko {
     if (!spriteSet) return;
     const sprite = spriteSet[frame % spriteSet.length];
     if (sprite) {
-      this.nekoElement.style.backgroundPosition = `${
-        sprite[0] * NEKO_WIDTH
-      }px ${sprite[1] * NEKO_HEIGHT}px`;
+      const posX = sprite[0] * (NEKO_WIDTH + SPRITE_GAP);
+      const posY = sprite[1] * (NEKO_HEIGHT + SPRITE_GAP);
+
+      this.nekoElement.style.backgroundPosition = `-${posX}px -${posY}px`;
     }
   }
 
@@ -227,13 +292,16 @@ export class Neko {
       Math.random() < IDLE_ANIMATION_CHANCE &&
       this.idleAnimation == null
     ) {
-      const availableIdleAnimations = ["sleeping", "scratchSelf"];
-      if (this.posX < NEKO_WIDTH) availableIdleAnimations.push("scratchWallW");
-      if (this.posY < NEKO_HEIGHT) availableIdleAnimations.push("scratchWallN");
-      if (this.posX > window.innerWidth - NEKO_WIDTH)
-        availableIdleAnimations.push("scratchWallE");
-      if (this.posY > window.innerHeight - NEKO_HEIGHT)
-        availableIdleAnimations.push("scratchWallS");
+      const availableIdleAnimations = [
+        "sleeping",
+        "scratchSelf",
+        "lickPaw",
+        "scratchWallW",
+        "scratchWallN",
+        "scratchWallE",
+        "scratchWallS",
+      ];
+
       this.idleAnimation =
         availableIdleAnimations[
           Math.floor(Math.random() * availableIdleAnimations.length)
@@ -248,6 +316,12 @@ export class Neko {
         }
         this.setSprite("sleeping", Math.floor(this.idleAnimationFrame / 4));
         if (this.idleAnimationFrame > 192) {
+          this.resetIdleAnimation();
+        }
+        break;
+      case "lickPaw":
+        this.setSprite("lickPaw", 0);
+        if (this.idleAnimationFrame > 20) {
           this.resetIdleAnimation();
         }
         break;
@@ -341,5 +415,6 @@ export class Neko {
     if (this.animationFrameId) {
       window.cancelAnimationFrame(this.animationFrameId);
     }
+    document.removeEventListener("mousemove", this.handleMouseMove);
   }
 }
