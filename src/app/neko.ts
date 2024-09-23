@@ -330,6 +330,9 @@ export class Neko {
         if (this.idleAnimationFrame < 8) {
           this.setSprite("tired", 0);
           break;
+        } else if (this.idleAnimationFrame < 16) {
+          this.setSprite("idle", 0);
+          break;
         }
         this.setSprite("sleeping", Math.floor(this.idleAnimationFrame / 4));
         if (this.idleAnimationFrame > 192) {
@@ -338,7 +341,7 @@ export class Neko {
         break;
       case "lickPaw":
         this.setSprite("lickPaw", 0);
-        if (this.idleAnimationFrame > 20) {
+        if (this.idleAnimationFrame > 4) {
           this.resetIdleAnimation();
         }
         break;
