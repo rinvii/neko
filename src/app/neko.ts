@@ -1,5 +1,3 @@
-const NEKO_ID = "neko";
-const NEKO_IMAGE_URL = "/neko.png";
 const NEKO_WIDTH = 32;
 const NEKO_HEIGHT = 32;
 const NEKO_HALF_WIDTH = NEKO_WIDTH / 2;
@@ -32,12 +30,26 @@ export class Neko {
   animationFrameId: number | null;
   spriteSets: Record<string, [number, number][]>;
   isReducedMotion: boolean;
+  nekoImageUrl: string;
+  nekoName: string;
 
-  constructor() {
-    this.posX = NEKO_HALF_WIDTH;
-    this.posY = NEKO_HALF_HEIGHT;
-    this.initialPosX = this.posX;
-    this.initialPosY = this.posY;
+  constructor({
+    nekoName,
+    nekoImageUrl,
+    initialPosX,
+    initialPosY,
+  }: {
+    nekoName: string;
+    nekoImageUrl: string;
+    initialPosX?: number;
+    initialPosY?: number;
+  }) {
+    this.nekoName = nekoName;
+    this.nekoImageUrl = nekoImageUrl;
+    this.posX = initialPosX !== undefined ? initialPosX : NEKO_HALF_WIDTH;
+    this.posY = initialPosY !== undefined ? initialPosY : NEKO_HALF_HEIGHT;
+    this.initialPosX = initialPosX !== undefined ? initialPosX : this.posX;
+    this.initialPosY = initialPosY !== undefined ? initialPosY : this.posY;
     this.mouseX = 0;
     this.mouseY = 0;
     this.frameCount = 0;
@@ -118,7 +130,7 @@ export class Neko {
 
   init() {
     if (this.isReducedMotion) return;
-    if (document.getElementById(NEKO_ID)) return;
+    if (document.getElementById(this.nekoName)) return;
 
     this.createNekoElement();
     this.addEventListeners();
@@ -176,7 +188,7 @@ export class Neko {
   async createNekoElement() {
     this.nekoElement = document.createElement("div");
 
-    this.nekoElement.id = NEKO_ID;
+    this.nekoElement.id = this.nekoName;
     this.nekoElement.ariaHidden = "true";
     this.nekoElement.style.width = `${NEKO_WIDTH}px`;
     this.nekoElement.style.height = `${NEKO_HEIGHT}px`;
@@ -186,18 +198,23 @@ export class Neko {
     this.nekoElement.style.left = `${this.posX - NEKO_HALF_WIDTH}px`;
     this.nekoElement.style.top = `${this.posY - NEKO_HALF_HEIGHT}px`;
     this.nekoElement.style.zIndex = Z_INDEX.toString();
-    this.nekoElement.style.backgroundImage = `url("${NEKO_IMAGE_URL}")`;
-
-    document.body.appendChild(this.nekoElement);
+    this.nekoElement.style.backgroundImage = `url("${this.nekoImageUrl}")`;
+    this.nekoElement.style.cursor = "pointer";
 
     try {
       const transparentImageUrl = await Neko.makeTransparent(
-        NEKO_IMAGE_URL,
+        this.nekoImageUrl,
         BACKGROUND_TARGET_COLOR
       );
 
       if (this.nekoElement) {
         this.nekoElement.style.backgroundImage = `url("${transparentImageUrl}")`;
+      }
+
+      if (this.nekoElement) {
+        document.body.appendChild(this.nekoElement);
+      } else {
+        throw new Error("Neko element is null, cannot append to document.");
       }
     } catch (err) {
       console.error("Failed to process the image:", err);
