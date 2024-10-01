@@ -32,7 +32,7 @@ pnpm dev
 - Neko can be persisted across different pages when used in a Next.js layout file
 - Neko is clickable, either following the cursor or returning to its starting position
 - In React, Neko must be initialized with useEffect
-- Neko can be dragged.
+- Neko can be dragged
 
 ## All Versions
 
