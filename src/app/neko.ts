@@ -11,6 +11,9 @@ const IDLE_ANIMATION_CHANCE = 1 / 20;
 const MIN_DISTANCE = 10;
 const SPRITE_GAP = 1;
 const BACKGROUND_TARGET_COLOR = [0, 174, 240] as [number, number, number];
+const AXIS_THRESHOLD = 4;
+
+// TODO: offset neko when dragging
 
 export class Neko {
   posX: number;
@@ -32,6 +35,14 @@ export class Neko {
   isReducedMotion: boolean;
   nekoImageUrl: string;
   nekoName: string;
+  isDragging: boolean;
+  lastMouseX: number;
+  lastMouseY: number;
+  wasDragged: boolean;
+  isMouseMoving: boolean = false;
+  mouseMoveTimeoutId: number | null = null;
+  dragAnimationLastTimestamp: number | null = null;
+  currentScratchSprite: string | null = null;
 
   constructor({
     nekoName,
@@ -64,6 +75,11 @@ export class Neko {
     this.isReducedMotion = window.matchMedia(
       `(prefers-reduced-motion: reduce)`
     ).matches;
+    this.isDragging = false;
+    this.wasDragged = false;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+    this.currentScratchSprite = null;
     this.spriteSets = {
       idle: [[0, 0]],
       alert: [[7, 0]],
@@ -137,7 +153,6 @@ export class Neko {
     this.animationLoop();
   }
 
-  // TODO: image processing is done in runtime, consider doing this before when i get enough spritesets
   static async makeTransparent(
     imageUrl: string,
     targetColor: [number, number, number]
@@ -199,7 +214,7 @@ export class Neko {
     this.nekoElement.style.top = `${this.posY - NEKO_HALF_HEIGHT}px`;
     this.nekoElement.style.zIndex = Z_INDEX.toString();
     this.nekoElement.style.backgroundImage = `url("${this.nekoImageUrl}")`;
-    this.nekoElement.style.cursor = "pointer";
+    this.nekoElement.style.cursor = "grab";
 
     try {
       const transparentImageUrl = await Neko.makeTransparent(
@@ -230,23 +245,152 @@ export class Neko {
     }
   }
 
+  private updateDraggingSprite(dx: number, dy: number, timeStamp: number) {
+    if (!this.isMouseMoving) {
+      return;
+    }
+
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    let spriteName: string;
+
+    if (absDx - absDy > AXIS_THRESHOLD) {
+      if (dx > 0) {
+        spriteName = "scratchWallW";
+      } else {
+        spriteName = "scratchWallE";
+      }
+    } else if (absDy - absDx > AXIS_THRESHOLD) {
+      if (dy > 0) {
+        spriteName = "scratchWallN";
+      } else {
+        spriteName = "scratchWallS";
+      }
+    } else {
+      spriteName = this.currentScratchSprite || "idle";
+    }
+
+    this.currentScratchSprite = spriteName;
+
+    if (this.dragAnimationLastTimestamp === null) {
+      this.dragAnimationLastTimestamp = timeStamp;
+    }
+
+    const timeSinceLastFrame = timeStamp - this.dragAnimationLastTimestamp;
+
+    const DRAG_ANIMATION_FRAME_INTERVAL = 100;
+
+    if (timeSinceLastFrame >= DRAG_ANIMATION_FRAME_INTERVAL) {
+      this.idleAnimationFrame += 1;
+      this.dragAnimationLastTimestamp = timeStamp;
+    }
+
+    const frameIndex =
+      this.idleAnimationFrame % this.spriteSets[spriteName].length;
+    this.setSprite(spriteName, frameIndex);
+  }
+
   private handleMouseMove = (event: MouseEvent) => {
-    this.mouseX = event.clientX;
-    this.mouseY = event.clientY;
+    if (this.isDragging) {
+      const dx = event.clientX - this.lastMouseX;
+      const dy = event.clientY - this.lastMouseY;
+      const movementDistance = Math.hypot(dx, dy);
+
+      const MOVEMENT_THRESHOLD = 2;
+
+      if (!this.wasDragged) {
+        if (movementDistance > MOVEMENT_THRESHOLD) {
+          this.wasDragged = true;
+        } else {
+          this.setSprite("alert", 0);
+          this.render();
+
+          this.lastMouseX = event.clientX;
+          this.lastMouseY = event.clientY;
+          return;
+        }
+      }
+
+      this.isMouseMoving = true;
+
+      if (this.mouseMoveTimeoutId !== null) {
+        clearTimeout(this.mouseMoveTimeoutId);
+      }
+
+      this.mouseMoveTimeoutId = window.setTimeout(() => {
+        this.isMouseMoving = false;
+
+        this.setSprite("alert", 0);
+        this.render();
+      }, 100);
+
+      this.posX = event.clientX;
+      this.posY = event.clientY;
+
+      this.updateDraggingSprite(dx, dy, event.timeStamp);
+
+      this.lastMouseX = event.clientX;
+      this.lastMouseY = event.clientY;
+
+      this.render();
+    } else {
+      this.mouseX = event.clientX;
+      this.mouseY = event.clientY;
+    }
+  };
+
+  private handleMouseDown = (event: MouseEvent) => {
+    this.isDragging = true;
+    this.wasDragged = false;
+    this.lastMouseX = event.clientX;
+    this.lastMouseY = event.clientY;
+    this.idleAnimationFrame = 0;
+    this.dragAnimationLastTimestamp = null;
+    this.isMouseMoving = false;
+
+    if (this.nekoElement) {
+      this.nekoElement.style.cursor = "grabbing";
+    }
+
+    this.setSprite("alert", 0);
+    this.render();
+    event.preventDefault();
+  };
+
+  private handleMouseUp = () => {
+    this.isDragging = false;
+    this.idleAnimationFrame = 0;
+    this.dragAnimationLastTimestamp = null;
+    this.isMouseMoving = false;
+    this.currentScratchSprite = null;
+
+    if (this.nekoElement) {
+      this.nekoElement.style.cursor = "grab";
+    }
+
+    if (this.mouseMoveTimeoutId !== null) {
+      clearTimeout(this.mouseMoveTimeoutId);
+      this.mouseMoveTimeoutId = null;
+    }
   };
 
   addEventListeners() {
     if (!this.nekoElement) return;
 
     this.nekoElement.addEventListener("click", () => {
-      this.isFollowing = !this.isFollowing;
-      if (this.isFollowing) {
-        this.isReturningToOrigin = false;
-      } else {
-        this.isReturningToOrigin = true;
+      if (!this.wasDragged) {
+        this.isFollowing = !this.isFollowing;
+        if (this.isFollowing) {
+          this.isReturningToOrigin = false;
+        } else {
+          this.isReturningToOrigin = true;
+        }
       }
     });
 
+    this.nekoElement.addEventListener("mousedown", this.handleMouseDown);
+    document.addEventListener("mouseup", this.handleMouseUp);
     document.addEventListener("mousemove", this.handleMouseMove);
   }
 
@@ -255,17 +399,28 @@ export class Neko {
       if (this.lastFrameTimestamp === null) {
         this.lastFrameTimestamp = timestamp;
       }
-      if (timestamp - this.lastFrameTimestamp > FRAME_RATE) {
+
+      const delta = timestamp - this.lastFrameTimestamp;
+
+      if (this.isDragging || delta > FRAME_RATE) {
         this.lastFrameTimestamp = timestamp;
         this.updateState();
-        this.render();
+
+        if (!this.isDragging) {
+          this.render();
+        }
       }
+
       this.animationFrameId = window.requestAnimationFrame(loop);
     };
     this.animationFrameId = window.requestAnimationFrame(loop);
   }
 
   updateState() {
+    if (this.isDragging) {
+      return;
+    }
+
     this.frameCount += 1;
 
     if (this.isReturningToOrigin) {
@@ -392,7 +547,6 @@ export class Neko {
     this.posX -= (diffX / distance) * NEKO_SPEED;
     this.posY -= (diffY / distance) * NEKO_SPEED;
 
-    // ensures neko stays within window bounds
     this.posX = Math.min(
       Math.max(NEKO_HALF_WIDTH, this.posX),
       window.innerWidth - NEKO_HALF_WIDTH
@@ -429,6 +583,7 @@ export class Neko {
 
   destroy() {
     if (this.nekoElement) {
+      this.nekoElement.removeEventListener("mousedown", this.handleMouseDown);
       this.nekoElement.remove();
       this.nekoElement = null;
     }
@@ -436,5 +591,6 @@ export class Neko {
       window.cancelAnimationFrame(this.animationFrameId);
     }
     document.removeEventListener("mousemove", this.handleMouseMove);
+    document.removeEventListener("mouseup", this.handleMouseUp);
   }
 }
