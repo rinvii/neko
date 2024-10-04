@@ -287,7 +287,9 @@ export class Neko {
     }
 
     const frameIndex =
-      this.idleAnimationFrame % this.spriteSets[spriteName].length;
+      (this.spriteSets[spriteName]?.length ?? 0) > 0
+        ? this.idleAnimationFrame % (this.spriteSets[spriteName]?.length ?? 1)
+        : 0;
     this.setSprite(spriteName, frameIndex);
   }
 
